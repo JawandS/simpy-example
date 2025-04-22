@@ -1,4 +1,3 @@
-# Simulating a 911 Call Center using SimPy with dynamic agent resources
 import simpy
 import numpy as np
 import pandas as pd
@@ -30,26 +29,62 @@ def call_length(env):
         return max(1, np.random.normal(loc=5, scale=1))
 
 # ---------------------
-# Call Center Controller
+# Agent Class
+# ---------------------
+class Agent:
+    def __init__(self, agent_id):
+        self.id = agent_id
+
+# ---------------------
+# Call Center Using Store
 # ---------------------
 class CallCenter:
     def __init__(self, env):
         self.env = env
-        self.agents = simpy.Resource(env, capacity=5)  # Initial low-period capacity
+        self.store = simpy.Store(env)
+        self.all_agents = []
+        self.target_capacity = 5
+        self._initialize_agents(self.target_capacity)
         env.process(self.shift_manager())
+
+    def _initialize_agents(self, count):
+        for i in range(count):
+            agent = Agent(f"Agent_{i}")
+            self.all_agents.append(agent)
+            self.store.put(agent)
 
     def shift_manager(self):
         while True:
-            minute = int(self.env.now)
-            if minute in HIGH_PERIOD:
-                capacity = 25
-            elif minute in MODERATE_PERIOD:
-                capacity = 15
+            now = int(self.env.now)
+            if now in HIGH_PERIOD:
+                target = 25
+            elif now in MODERATE_PERIOD:
+                target = 15
             else:
-                capacity = 5
-            # Only update if the capacity has changed
-            if self.agents.capacity != capacity:
-                self.agents = simpy.Resource(self.env, capacity=capacity)
+                target = 5
+
+            current_total = len(self.all_agents)
+            idle_agents = len(self.store.items)
+
+            if target > current_total:
+                # Add new agents to both pool and idle store
+                for i in range(current_total, target):
+                    agent = Agent(f"Agent_{i}")
+                    self.all_agents.append(agent)
+                    self.store.put(agent)
+            elif target < current_total:
+                # Mark agents as inactive only if they are idle
+                excess = current_total - target
+                removed = 0
+                new_all_agents = []
+                for agent in self.all_agents:
+                    if removed < excess and agent in self.store.items:
+                        self.store.items.remove(agent)
+                        removed += 1
+                    else:
+                        new_all_agents.append(agent)
+                self.all_agents = new_all_agents
+
             yield self.env.timeout(1)
 
 # ---------------------
@@ -57,13 +92,16 @@ class CallCenter:
 # ---------------------
 def person_call(env, caller_id, call_center, wait_times, call_durations):
     arrival_time = env.now
-    with call_center.agents.request() as request:
-        yield request
-        wait_time = env.now - arrival_time
-        wait_times.append(wait_time)
-        duration = call_length(env)
-        call_durations.append(duration)
-        yield env.timeout(duration)
+    agent = yield call_center.store.get()
+    wait_time = env.now - arrival_time
+    wait_times.append(wait_time)
+
+    duration = call_length(env)
+    call_durations.append(duration)
+    yield env.timeout(duration)
+
+    # Agent becomes available again
+    yield call_center.store.put(agent)
 
 def call_generator(env, call_center, wait_times, call_durations):
     caller_id = 0
@@ -93,19 +131,22 @@ def run_simulation():
 # Multiple Simulation Runs
 # ---------------------
 if __name__ == "__main__":
-    # Track results
     results = pd.DataFrame(columns=["Total Calls", "Avg Wait Time", "Max Wait Time", "Avg Duration"])
 
-    # Run simulations
     seed = 404
     for i in range(5):
         np.random.seed(seed + i)
         wait_times, call_durations = run_simulation()
-        results = pd.concat([results, pd.DataFrame({
+        simulation_result = pd.DataFrame({
             "Total Calls": len(call_durations),
             "Avg Wait Time": np.mean(wait_times),
             "Max Wait Time": max(wait_times),
             "Avg Duration": np.mean(call_durations)
-        }, index=[0])])
+        }, index=[i])
+        if len(results) == 0:
+            results = simulation_result
+        else:
+            results = pd.concat([results, simulation_result])
+
     print("\nSimulation Results:")
     print(results)
