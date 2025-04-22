@@ -10,23 +10,44 @@ MODERATE_PERIOD = set(range(8 * 60, 12 * 60))      # 8:00 AM – 11:59 AM
 LOW_PERIOD = set(range(0, 8 * 60)) | set(range(16 * 60, 24 * 60))  # All other hours
 
 # ---------------------
+# Sim Parameters
+# ---------------------
+# Call rates per minute
+HIGH_CALLS_RATE = 3
+MODERATE_CALLS_RATE = 2
+LOW_CALLS_RATE = 0.8
+
+# Call durations in minutes
+HIGH_CALLS_DURATION = 10
+HIGH_CALLS_DURATION_STD = 3
+MODERATE_CALLS_DURATION = 7
+MODERATE_CALLS_DURATION_STD = 2
+LOW_CALLS_DURATION = 5
+LOW_CALLS_DURATION_STD = 1
+
+# Number of agents
+HIGH_AGENTS = 25
+MODERATE_AGENTS = 15
+LOW_AGENTS = 5
+
+# ---------------------
 # Call Behavior
 # ---------------------
 def call_rate(env):
     if int(env.now) in HIGH_PERIOD:
-        return np.random.poisson(lam=3)
+        return np.random.poisson(lam=HIGH_CALLS_RATE)
     elif int(env.now) in MODERATE_PERIOD:
-        return np.random.poisson(lam=2)
+        return np.random.poisson(lam=MODERATE_CALLS_RATE)
     else:
-        return np.random.poisson(lam=0.8)
+        return np.random.poisson(lam=LOW_CALLS_RATE)
 
 def call_length(env):
     if int(env.now) in HIGH_PERIOD:
-        return max(1, np.random.normal(loc=10, scale=3))
+        return max(1, np.random.normal(loc=HIGH_CALLS_DURATION, scale=HIGH_CALLS_DURATION_STD))
     elif int(env.now) in MODERATE_PERIOD:
-        return max(1, np.random.normal(loc=7, scale=2))
+        return max(1, np.random.normal(loc=MODERATE_CALLS_DURATION, scale=MODERATE_CALLS_DURATION))
     else:
-        return max(1, np.random.normal(loc=5, scale=1))
+        return max(1, np.random.normal(loc=LOW_CALLS_DURATION, scale=LOW_CALLS_DURATION_STD))
 
 # ---------------------
 # Agent Class
@@ -43,7 +64,7 @@ class CallCenter:
         self.env = env
         self.store = simpy.Store(env)
         self.all_agents = []
-        self.target_capacity = 5
+        self.target_capacity = LOW_AGENTS
         self._initialize_agents(self.target_capacity)
         env.process(self.shift_manager())
 
@@ -57,11 +78,11 @@ class CallCenter:
         while True:
             now = int(self.env.now)
             if now in HIGH_PERIOD:
-                target = 25
+                target = HIGH_AGENTS
             elif now in MODERATE_PERIOD:
-                target = 15
+                target = MODERATE_AGENTS
             else:
-                target = 5
+                target = LOW_AGENTS
 
             current_total = len(self.all_agents)
             idle_agents = len(self.store.items)
@@ -134,7 +155,7 @@ if __name__ == "__main__":
     results = pd.DataFrame(columns=["Total Calls", "Avg Wait Time", "Max Wait Time", "Avg Duration"])
 
     seed = 404
-    for i in range(5):
+    for i in range(25):
         np.random.seed(seed + i)
         wait_times, call_durations = run_simulation()
         simulation_result = pd.DataFrame({
@@ -148,5 +169,9 @@ if __name__ == "__main__":
         else:
             results = pd.concat([results, simulation_result])
 
-    print("\nSimulation Results:")
-    print(results)
+    print("Simulation Results:")
+    # Print average of each column (round to 2 decimal places)
+    print("Total Calls:", results["Total Calls"].mean())
+    print("Avg Wait Time:", round(results["Avg Wait Time"].mean(), 2))
+    print("Max Wait Time:", round(max(results["Max Wait Time"]), 2))
+    print("Avg Duration:", round(results["Avg Duration"].mean(), 2))
