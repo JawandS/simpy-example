@@ -87,20 +87,25 @@ def run_simulation():
     env.process(call_generator(env, call_center, wait_times, call_durations))
     env.run(until=24 * 60)
 
-    print(f"Total calls handled: {len(call_durations)}")
-    print(f"Average wait time: {np.mean(wait_times):.2f} min")
-    print(f"Max wait time: {max(wait_times):.2f} min")
-    print(f"Average call duration: {np.mean(call_durations):.2f} min")
     return wait_times, call_durations
 
 # ---------------------
 # Multiple Simulation Runs
 # ---------------------
 if __name__ == "__main__":
+    # Track results
+    results = pd.DataFrame(columns=["Total Calls", "Avg Wait Time", "Max Wait Time", "Avg Duration"])
+
+    # Run simulations
     seed = 404
     for i in range(5):
-        print("-" * 40)
         np.random.seed(seed + i)
-        print(f"Run {i + 1}:")
         wait_times, call_durations = run_simulation()
-    print("-" * 40)
+        results = pd.concat([results, pd.DataFrame({
+            "Total Calls": len(call_durations),
+            "Avg Wait Time": np.mean(wait_times),
+            "Max Wait Time": max(wait_times),
+            "Avg Duration": np.mean(call_durations)
+        }, index=[0])])
+    print("\nSimulation Results:")
+    print(results)
