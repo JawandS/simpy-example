@@ -1,94 +1,87 @@
+# -----------------------------
+# Dependencies
+# -----------------------------
 import simpy
 import numpy as np
 import pandas as pd
 
-# Simulation parameters
-NUM_AGENTS = 15
-SIM_END = 8 * 60 # 8 hours = 480 minutes (from 9am to 5pm)
-MEAN_CALLS_PER_MIN = 3
-STD_CALLS_PER_MIN = 1
-MEAN_CALL_DURATION = 10
-STD_CALL_DURATION = 3
-NUM_RUNS = 5
+# -----------------------------
+# Simulation Parameters
+# -----------------------------
+NUM_AGENTS = 25               # Number of call center agents
+SIM_DURATION = 8 * 60         # Simulation runs for 8 hours (480 minutes)
+CALLS_PER_MINUTE = 3          # Constant number of incoming calls per minute
+MEAN_CALL_DURATION = 8       # Average call duration in minutes
+STD_CALL_DURATION = 5         # Standard deviation of call duration
+NUM_RUNS = 5                  # Number of simulation runs
 
-# Results storage
-results = []
-
-def customer(env, name, agents, call_duration, wait_times, call_durations):
+# -----------------------------
+# Customer Process
+# -----------------------------
+def customer(env, agents, wait_times, call_durations):
     """
-    Simulates a customer call by requesting an available agent and processing the call.
+    Simulates a single customer calling the center.
 
-    Parameters:
-        env (simpy.Environment): The simulation environment.
-        name (str): Identifier for the customer.
-        agents (simpy.FilterStore): Store of available agents.
-        call_duration (float): Duration of the customer's call.
-        wait_times (list): List to record each customer's wait time.
-        call_durations (list): List to record each call's duration.
-
-    Yields:
-        simpy.Event: Represents resource request and call duration.
+    - Waits for an available agent.
+    - Records wait time and call duration.
     """
-    arrival_time = env.now
-    with agents.get(lambda x: True) as req:
-        yield req
-        wait_time = env.now - arrival_time
+    arrival = env.now
+    with agents.request() as request:
+        yield request
+        wait_time = env.now - arrival
         wait_times.append(wait_time)
 
-        yield env.timeout(call_duration)
-        call_durations.append(call_duration)
-        agents.put("agent")
+        # Simulate the actual call duration
+        duration = max(1, np.random.normal(MEAN_CALL_DURATION, STD_CALL_DURATION))
+        call_durations.append(duration)
+        yield env.timeout(duration)
 
-def customer_generator(env, agents, wait_times, call_durations):
+# -----------------------------
+# Call Generator Process
+# -----------------------------
+def generate_calls(env, agents, wait_times, call_durations):
     """
-    Generates customers calling the call center over time.
-
-    Parameters:
-        env (simpy.Environment): The simulation environment.
-        agents (simpy.FilterStore): Store of available agents.
-        wait_times (list): List to track wait times.
-        call_durations (list): List to track call durations.
-
-    Yields:
-        simpy.Event: Triggers every simulated minute to generate new calls.
+    Generates a fixed number of calls every minute.
     """
-    while env.now < SIM_END:
-        calls = max(0, int(np.random.normal(MEAN_CALLS_PER_MIN, STD_CALLS_PER_MIN)))
-        for i in range(calls):
-            duration = max(1, np.random.normal(MEAN_CALL_DURATION, STD_CALL_DURATION))
-            env.process(customer(env, f'Customer_{env.now}_{i}', agents, duration, wait_times, call_durations))
-        yield env.timeout(1)
+    while env.now < SIM_DURATION:
+        for i in range(CALLS_PER_MINUTE):
+            env.process(customer(env, agents, wait_times, call_durations))
+        yield env.timeout(1)  # Wait 1 minute before next batch
 
+# -----------------------------
+# Simulation Runner
+# -----------------------------
 def run_simulation():
     """
-    Runs the call center simulation multiple times and aggregates results.
-
-    Returns:
-        pd.DataFrame: DataFrame with average wait time, call duration, and call count for each run.
+    Runs the call center simulation multiple times and collects performance metrics.
+    Returns a DataFrame with results.
     """
-    for run in range(NUM_RUNS):
-        env = simpy.Environment()
-        agents = simpy.FilterStore(env, capacity=NUM_AGENTS)
-        for _ in range(NUM_AGENTS):
-            agents.items.append("agent")
+    all_results = []
 
+    for run in range(1, NUM_RUNS + 1):
+        env = simpy.Environment()
+        agents = simpy.Resource(env, capacity=NUM_AGENTS)
         wait_times = []
         call_durations = []
 
-        env.process(customer_generator(env, agents, wait_times, call_durations))
-        env.run(until=SIM_END)
+        env.process(generate_calls(env, agents, wait_times, call_durations))
+        env.run(until=SIM_DURATION)
 
-        results.append({
-            'Run': run + 1,
-            'Avg Wait Time': np.mean(wait_times) if wait_times else 0,
-            'Max Wait Time': max(wait_times) if wait_times else 0,
-            'Avg Call Duration': np.mean(call_durations) if call_durations else 0,
-            'Total Calls': len(call_durations)
+        # Store metrics for this run
+        all_results.append({
+            "Run": run,
+            "Avg Wait Time (min)": round(np.mean(wait_times), 2) if wait_times else 0,
+            "Max Wait Time (min)": round(max(wait_times), 2) if wait_times else 0,
+            "Avg Call Duration (min)": round(np.mean(call_durations), 2) if call_durations else 0,
+            "Total Calls": len(call_durations)
         })
 
-    return pd.DataFrame(results)
+    return pd.DataFrame(all_results)
 
-# Execute the simulation and display results
+# -----------------------------
+# Run the Simulation and Display Results
+# -----------------------------
 if __name__ == "__main__":
-    df = run_simulation()
-    print(df)
+    results_df = run_simulation()
+    print("\nSimulation Results (Fixed Call Rate):\n")
+    print(results_df.to_string(index=False))
