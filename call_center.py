@@ -11,7 +11,7 @@ import pandas as pd
 NUM_AGENTS = 25               # Number of call center agents
 SIM_DURATION = 8 * 60         # Simulation runs for 8 hours (480 minutes)
 CALLS_PER_MINUTE = 3          # Constant number of incoming calls per minute
-MEAN_CALL_DURATION = 8       # Average call duration in minutes
+MEAN_CALL_DURATION = 8        # Average call duration in minutes
 STD_CALL_DURATION = 5         # Standard deviation of call duration
 NUM_RUNS = 5                  # Number of simulation runs
 
